@@ -76,7 +76,7 @@ public class DbCopyService : IDbCopyService
             CreateSchemas(dbName, schema, true);
             var tables = GetTables(dbName);
             CreateTables(dbName, tables);
-            Console.Clear();
+            // Console.Clear();
             MigrateTableData(dbName, tables, true);
         }
         else
@@ -165,32 +165,32 @@ public class DbCopyService : IDbCopyService
         else
         {
             var schemas = GetSchemas(dbName);
-            var query = $@";WITH pk_columns AS (SELECT ic.object_id,
+            var query = @";WITH pk_columns AS (SELECT ic.object_id,
                            ic.column_id
                     FROM sys.indexes i
                              JOIN sys.index_columns ic
                                   ON i.object_id = ic.object_id
                                       AND i.index_id = ic.index_id
                     WHERE i.is_primary_key = 1)
-        SELECT s.name                                  AS OldSchemaName,
-       t.name                                  AS TableName,
-       c.name                                  AS ColumnName,
-       ty.name                                 AS DataType,
+        SELECT s.name                              AS OldSchemaName,
+       o.name                              AS TableName,
+       c.name                              AS ColumnName,
+       ty.name                             AS DataType,
        IIF(c.is_nullable = 1, 'YES', 'NO') AS IsNullable,
        IIF(c.is_identity = 1, 'YES', 'NO') AS IsIdentity
-
         FROM sys.columns c
-         JOIN sys.tables t
-              ON c.object_id = t.object_id
+         JOIN sys.objects o
+              ON c.object_id = o.object_id
          JOIN sys.schemas s
-              ON t.schema_id = s.schema_id
-         JOIN sys.types ty
-              ON c.user_type_id = ty.user_type_id
+              ON o.schema_id = s.schema_id
+         LEFT JOIN sys.types ty
+                   ON c.user_type_id = ty.user_type_id
          LEFT JOIN pk_columns pk
                    ON c.object_id = pk.object_id
                        AND c.column_id = pk.column_id
+        WHERE o.type in ('U', 'V')
         ORDER BY s.name,
-         t.name,
+         o.name,
          c.column_id;";
             var conn = _connectionProvider.GetMssqlConnection(dbName);
             var unFilteredColumns = conn.Query<Columns>(query).ToList();
@@ -276,38 +276,38 @@ public class DbCopyService : IDbCopyService
             {
                 var npgsqlConn = (NpgsqlConnection)psqlConnection;
                 var query = $"select * from {t.OldSchemaName}.{t.TableName};";
-                var tableData = msSqlConnection.ExecuteReader(query);
-                var dataTable = new DataTable();
-                dataTable.BeginLoadData();
-                dataTable.Load(tableData);
-                dataTable.EndLoadData();
+                using var reader = msSqlConnection.ExecuteReader(query);
                 using (var writer =
                        npgsqlConn.BeginBinaryImport(
                            $"COPY \"{t.NewSchemaName}\".\"{t.TableName}\" FROM STDIN (FORMAT BINARY)"))
                 {
-                    foreach (DataRow row in dataTable.Rows)
+                    while (reader.Read())
                     {
                         writer.StartRow();
 
-                        foreach (var item in row.ItemArray)
+                        for (int i = 0; i < reader.FieldCount; i++)
                         {
-                            if (item is not null && item is DateTime dt)
+                            var val = reader.GetValue(i);
+
+                            if (val == DBNull.Value)
                             {
-                                writer.Write(dt, NpgsqlTypes.NpgsqlDbType.Timestamp);
+                                writer.WriteNull();
+                                continue;
                             }
+
+
+                            if (val is DateTime dt)
+                                writer.Write(dt.Date);
                             else
-                            {
-                                writer.Write(item ?? DBNull.Value);
-                            }
+                                writer.Write(val);
                         }
                     }
 
-                    writer.Complete();
+                    Console.WriteLine($"Data migrated from {t.OldSchemaName}.{t.TableName}");
                 }
-
-                Console.WriteLine($"Data migrated from {t.OldSchemaName}.{t.TableName}");
             }
         }
+
         else
         {
             var sqlConn = (SqlConnection)msSqlConnection;

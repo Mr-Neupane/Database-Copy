@@ -56,8 +56,8 @@ public class DataTypeProvider : IDataTypeProvider
         { "bigint", "bigint" },
         { "binary", "bytea" },
         { "bit", "boolean" },
-        { "char", "char" },
-        { "date", "date" },
+        { "char", "text" },
+        { "date", "timestamp without time zone" },
         { "datetime", "timestamp without time zone" },
         { "datetime2", "timestamp without time zone" },
         { "datetimeoffset", "timestamp with time zone" },
@@ -69,7 +69,7 @@ public class DataTypeProvider : IDataTypeProvider
         { "nchar", "char" },
         { "ntext", "text" },
         { "numeric", "numeric" },
-        { "nvarchar", "character varying" },
+        { "nvarchar", "text" },
         { "real", "real" },
         { "smalldatetime", "timestamp without time zone" },
         { "smallint", "smallint" },
@@ -101,10 +101,10 @@ public class DataTypeProvider : IDataTypeProvider
         }
 
         if (type.StartsWith("nvarchar") || type.StartsWith("varchar"))
-            return "character varying";
+            return "text";
 
-        if (type.StartsWith("nchar") || type.StartsWith("char"))
-            return "char";
+        if ( type.StartsWith("nchar") || type.StartsWith("char"))
+            return "text";
 
         if (type.StartsWith("decimal") || type.StartsWith("numeric"))
             return "numeric";
