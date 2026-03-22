@@ -36,7 +36,7 @@ Console.WriteLine("Select server type to be moved:");
 Console.WriteLine("1. Psql to Mssql");
 Console.WriteLine("2. Mssql to Psql");
 var type = Convert.ToInt32(Console.ReadLine()?.Trim());
-if (type > 2)
+if (type > 2 || type == 0)
 {
     Console.WriteLine("Invalid copy selection.");
     return;

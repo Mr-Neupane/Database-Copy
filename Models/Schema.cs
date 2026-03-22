@@ -2,19 +2,17 @@
 
 public class Schema
 {
-    public string Name { get; set; }
+    public string OldSchemaName { get; set; }
+    public string NewSchemaName => string.Concat(OldSchemaName, "_mig");
 }
 
-public class Table
+public class Table : Schema
 {
-    public string SchemaName { get; set; }
     public string TableName { get; set; }
 }
 
-public class Columns
+public class Columns : Table
 {
-    public string SchemaName { get; set; }
-    public string TableName { get; set; }
     public string ColumnName { get; set; }
     public string DataType { get; set; }
     public string IsNullable { get; set; }

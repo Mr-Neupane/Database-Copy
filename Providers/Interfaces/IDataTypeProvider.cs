@@ -3,5 +3,6 @@
 public interface IDataTypeProvider
 {
     string GetCompatibleColumnTypeForMssql(string dataType);
+    string GetCompatibleColumnTypeForPsql(string dataType);
 
 }
