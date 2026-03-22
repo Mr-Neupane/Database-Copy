@@ -330,6 +330,8 @@ public class DbCopyService : IDbCopyService
 
                     txn.Commit();
                 }
+
+                Console.WriteLine($"Data migrated from {t.OldSchemaName}.{t.TableName}");
             }
         }
     }
