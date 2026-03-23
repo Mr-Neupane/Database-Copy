@@ -1,10 +1,11 @@
 ﻿using Database_Copy.Providers.Interfaces;
+using NpgsqlTypes;
 
 namespace Database_Copy.Providers;
 
 public class DataTypeProvider : IDataTypeProvider
 {
-    public string GetCompatibleColumnTypeForMssql(string dataType)
+    public string GetCompatibleDataTypeForMssql(string dataType)
     {
         if (string.IsNullOrWhiteSpace(dataType))
             return "NVARCHAR(MAX)";
@@ -84,7 +85,7 @@ public class DataTypeProvider : IDataTypeProvider
         { "xml", "xml" }
     };
 
-    public string GetCompatibleColumnTypeForPsql(string mssqlType)
+    public string GetCompatibleDataTypeForPsql(string mssqlType)
     {
         var type = mssqlType.Trim().ToLower();
 
@@ -103,7 +104,7 @@ public class DataTypeProvider : IDataTypeProvider
         if (type.StartsWith("nvarchar") || type.StartsWith("varchar"))
             return "text";
 
-        if ( type.StartsWith("nchar") || type.StartsWith("char"))
+        if (type.StartsWith("nchar") || type.StartsWith("char"))
             return "text";
 
         if (type.StartsWith("decimal") || type.StartsWith("numeric"))
@@ -113,5 +114,38 @@ public class DataTypeProvider : IDataTypeProvider
             return "bytea";
 
         return "text";
+    }
+
+    public NpgsqlDbType GetTypeForPsql(Type type)
+    {
+        if (type == typeof(byte)) return NpgsqlDbType.Smallint;
+
+        if (type == typeof(short)) return NpgsqlDbType.Smallint;
+        if (type == typeof(int)) return NpgsqlDbType.Integer;
+        if (type == typeof(long)) return NpgsqlDbType.Bigint;
+
+        if (type == typeof(float)) return NpgsqlDbType.Real;
+        if (type == typeof(double)) return NpgsqlDbType.Double;
+        if (type == typeof(decimal)) return NpgsqlDbType.Numeric;
+
+        if (type == typeof(bool)) return NpgsqlDbType.Boolean;
+
+        if (type == typeof(string)) return NpgsqlDbType.Text;
+        if (type == typeof(char)) return NpgsqlDbType.Char;
+        if (type == typeof(char[])) return NpgsqlDbType.Text;
+
+        if (type == typeof(DateTime)) return NpgsqlDbType.Timestamp;
+        if (type == typeof(DateTimeOffset)) return NpgsqlDbType.TimestampTz;
+
+        if (type == typeof(TimeSpan)) return NpgsqlDbType.Interval;
+
+        if (type == typeof(Guid)) return NpgsqlDbType.Uuid;
+
+        if (type == typeof(byte[])) return NpgsqlDbType.Bytea;
+
+        var underlyingType = Nullable.GetUnderlyingType(type);
+        if (underlyingType != null)
+            return GetTypeForPsql(underlyingType);
+        throw new NotSupportedException($"Type {type} not supported");
     }
 }
