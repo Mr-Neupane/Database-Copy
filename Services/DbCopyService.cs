@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.Diagnostics;
 using Database_Copy.Providers.Interfaces;
 using Database_Copy.Services.Interfaces;
 using Dapper;
@@ -87,9 +88,9 @@ public class DbCopyService : IDbCopyService
     }
 
 
-    List<Schema> GetSchemas(string dbName, bool isDbPostgres = false)
+    List<Schema> GetSchemas(string dbName, bool isPsqlToMssql = false)
     {
-        if (isDbPostgres)
+        if (isPsqlToMssql)
         {
             var conn = _connectionProvider.GetPsqlConnection(dbName);
             var query =
@@ -109,7 +110,7 @@ public class DbCopyService : IDbCopyService
 
     List<Table> GetTables(string dbName, bool isPsqlToMssql = false)
     {
-        var schemas = GetSchemas(dbName);
+        var schemas = GetSchemas(dbName, isPsqlToMssql);
         if (isPsqlToMssql)
         {
             var conn = _connectionProvider.GetPsqlConnection(dbName);
@@ -284,22 +285,47 @@ public class DbCopyService : IDbCopyService
                     while (reader.Read())
                     {
                         writer.StartRow();
-
                         for (int i = 0; i < reader.FieldCount; i++)
                         {
-                            var val = reader.GetValue(i);
-
-                            if (val == DBNull.Value)
+                            if (reader.IsDBNull(i))
                             {
                                 writer.WriteNull();
                                 continue;
                             }
 
+                            var val = reader.GetValue(i);
+                            var type = reader.GetFieldType(i);
 
-                            if (val is DateTime dt)
-                                writer.Write(dt.Date);
-                            else
-                                writer.Write(val);
+                            switch (Type.GetTypeCode(type))
+                            {
+                                case TypeCode.Int32:
+                                    writer.Write((int)val, NpgsqlTypes.NpgsqlDbType.Integer);
+                                    break;
+
+                                case TypeCode.Int64:
+                                    writer.Write((long)val, NpgsqlTypes.NpgsqlDbType.Bigint);
+                                    break;
+
+                                case TypeCode.String:
+                                    writer.Write((string)val, NpgsqlTypes.NpgsqlDbType.Text);
+                                    break;
+
+                                case TypeCode.DateTime:
+                                    writer.Write((DateTime)val, NpgsqlTypes.NpgsqlDbType.Timestamp);
+                                    break;
+
+                                case TypeCode.Boolean:
+                                    writer.Write((bool)val, NpgsqlTypes.NpgsqlDbType.Boolean);
+                                    break;
+
+                                case TypeCode.Decimal:
+                                    writer.Write((decimal)val, NpgsqlTypes.NpgsqlDbType.Numeric);
+                                    break;
+
+                                default:
+                                    writer.Write(val);
+                                    break;
+                            }
                         }
                     }
 
@@ -311,7 +337,7 @@ public class DbCopyService : IDbCopyService
         else
         {
             var sqlConn = (SqlConnection)msSqlConnection;
-
+            var stopwatch = Stopwatch.StartNew();
             foreach (var t in tables.Distinct())
             {
                 var query = $"select * from \"{t.OldSchemaName}\".\"{t.TableName}\"";
@@ -331,7 +357,23 @@ public class DbCopyService : IDbCopyService
                     txn.Commit();
                 }
 
+
                 Console.WriteLine($"Data migrated from {t.OldSchemaName}.{t.TableName}");
+            }
+
+            stopwatch.Stop();
+
+            var timeTaken = stopwatch.Elapsed;
+            
+            Console.WriteLine();
+            if (timeTaken.TotalMinutes < 1)
+            {
+                Console.WriteLine(
+                    $"Migration completed in {Math.Round(timeTaken.TotalSeconds, 2)} second(s)");
+            }
+            else
+            {
+                Console.WriteLine($"Migration completed in {Math.Round(timeTaken.TotalMinutes, 2)} minute(s)");
             }
         }
     }
@@ -346,9 +388,23 @@ public class DbCopyService : IDbCopyService
             var comma = i == tc.Count - 1 ? "" : ",";
             var nullable = tc[i].IsNullable == "YES" ? "" : "Not Null";
             var pk = tc[i].IsIdentity == "YES" ? "primary key" : "";
-            columnsCreation += $" \"{tc[i].ColumnName}\" {tc[i].DataType} {pk} {nullable} {comma} ";
+            var column = ValidateDoubleQuotesColumns(tc[i].ColumnName) ? $"\"{tc[i].ColumnName}\"" : tc[i].ColumnName;
+            columnsCreation += $" {column}  {tc[i].DataType} {pk} {nullable} {comma} ";
         }
 
         return columnsCreation;
+    }
+
+
+    private bool ValidateDoubleQuotesColumns(string cName)
+    {
+        var result = new List<string>();
+        result.Add("left");
+        result.Add("right");
+        result.Add("from");
+        result.Add("to");
+        result.Add("for");
+        var quoteColumn = result.Any(x => x == cName.Trim().ToLower());
+        return quoteColumn;
     }
 }
