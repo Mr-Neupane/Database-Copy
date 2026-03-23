@@ -1,8 +1,10 @@
-﻿namespace Database_Copy.Providers.Interfaces;
+﻿using NpgsqlTypes;
+
+namespace Database_Copy.Providers.Interfaces;
 
 public interface IDataTypeProvider
 {
-    string GetCompatibleColumnTypeForMssql(string dataType);
-    string GetCompatibleColumnTypeForPsql(string dataType);
-
+    string GetCompatibleDataTypeForMssql(string dataType);
+    string GetCompatibleDataTypeForPsql(string dataType);
+    NpgsqlDbType GetTypeForPsql(Type dataType);
 }

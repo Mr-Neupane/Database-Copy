@@ -1,7 +1,11 @@
-﻿using Database_Copy.Providers;
+﻿using Database_Copy.Helpers;
+using Database_Copy.Helpers.Interfaces;
+using Database_Copy.Providers;
 using Database_Copy.Providers.Interfaces;
 using Database_Copy.Services;
 using Database_Copy.Services.Interfaces;
+using Database_Copy.Validator;
+using Database_Copy.Validator.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,7 +20,10 @@ services.AddSingleton<IConfiguration>(configuration);
 
 services.AddScoped<IConnectionProvider, ConnectionProvider>()
     .AddTransient<IDbCopyService, DbCopyService>()
-    .AddTransient<IDataTypeProvider, DataTypeProvider>();
+    .AddTransient<IDataTypeProvider, DataTypeProvider>()
+    .AddTransient<IDbInfoProvider, DbInfoProvider>()
+    .AddTransient<IValidator, Validator>()
+    .AddTransient<ICreateHelper, CreateHelper>();
 
 var serviceProvider = services.BuildServiceProvider();
 
@@ -45,4 +52,4 @@ if (type > 2 || type == 0)
 var toPostgres = type == 2;
 
 var service = serviceProvider.GetRequiredService<IDbCopyService>();
-service.ValidateAndCopy(dbName, toPostgres);
+service.ValidateAndMigrate(dbName, toPostgres);
