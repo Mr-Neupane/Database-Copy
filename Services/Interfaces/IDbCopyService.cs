@@ -2,5 +2,5 @@
 
 public interface IDbCopyService
 {
-    void ValidateAndMigrate(string dbName, bool isToPostgres);
+    void ValidateAndMigrate(string dbName, bool isToPostgres, bool isVersioning);
 }

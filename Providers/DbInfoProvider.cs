@@ -34,8 +34,8 @@ public class DbInfoProvider : IDbInfoProvider
             return schema;
         }
     }
-    
-  public  List<Table> GetTables(string dbName, bool isPsqlToMssql = false)
+
+    public List<Table> GetTables(string dbName, bool isPsqlToMssql = false)
     {
         var schemas = GetSchemas(dbName, isPsqlToMssql);
         if (isPsqlToMssql)
@@ -67,8 +67,8 @@ public class DbInfoProvider : IDbInfoProvider
             return tables;
         }
     }
-  
-  public List<Columns> GetColumns(string dbName, bool isPsqlToMssql = false)
+
+    public List<Columns> GetColumns(string dbName, bool isPsqlToMssql = false, bool isDbVersioning = false)
     {
         if (isPsqlToMssql)
         {
@@ -129,7 +129,7 @@ public class DbInfoProvider : IDbInfoProvider
                     OldSchemaName = c.OldSchemaName,
                     TableName = c.TableName,
                     ColumnName = c.ColumnName,
-                    DataType = _dataTypeProvider.GetCompatibleDataTypeForPsql(c.DataType),
+                    DataType = isDbVersioning ? c.DataType : _dataTypeProvider.GetCompatibleDataTypeForPsql(c.DataType),
                     IsNullable = c.IsNullable,
                     IsIdentity = c.IsIdentity,
                 }).ToList();

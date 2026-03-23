@@ -42,14 +42,16 @@ if (string.IsNullOrWhiteSpace(dbName))
 Console.WriteLine("Select server type to be moved:");
 Console.WriteLine("1. Psql to Mssql");
 Console.WriteLine("2. Mssql to Psql");
+Console.WriteLine("3. Mssql Db versioning");
 var type = Convert.ToInt32(Console.ReadLine()?.Trim());
-if (type > 2 || type == 0)
+if (type > 3 || type == 0)
 {
     Console.WriteLine("Invalid copy selection.");
     return;
 }
 
 var toPostgres = type == 2;
+var isVersioning = type == 3;
 
 var service = serviceProvider.GetRequiredService<IDbCopyService>();
-service.ValidateAndMigrate(dbName, toPostgres);
+service.ValidateAndMigrate(dbName, toPostgres,isVersioning);

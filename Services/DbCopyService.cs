@@ -30,15 +30,22 @@ public class DbCopyService : IDbCopyService
         _createHelper = createHelper;
     }
 
-    public void ValidateAndMigrate(string dbName, bool isToPostgres)
+    public void ValidateAndMigrate(string dbName, bool isToPostgres, bool isVersioning)
     {
-        if (isToPostgres)
+        if (isVersioning)
         {
-            ConvertMssqlToPsql(dbName);
+            RevisionMssqlDb(dbName);
         }
         else
         {
-            ConvertPsqlToMssql(dbName);
+            if (isToPostgres)
+            {
+                ConvertMssqlToPsql(dbName);
+            }
+            else
+            {
+                ConvertPsqlToMssql(dbName);
+            }
         }
     }
 
@@ -224,6 +231,51 @@ public class DbCopyService : IDbCopyService
                 Console.WriteLine($"{string.Join(",", types)}");
                 connection.Close();
                 connection.Open();
+            }
+        }
+    }
+
+    void RevisionMssqlDb(string dbName)
+    {
+        var parentConnection = _connectionProvider.GetMssqlConnection();
+        var validateDb = $"select 1 from sys.databases where name='{dbName.Trim()}'";
+        using var checkIfDbExists = parentConnection.CreateCommand();
+        checkIfDbExists.CommandText = validateDb;
+        var res = checkIfDbExists.ExecuteScalar();
+        var exists = res != null;
+        if (exists)
+        {
+            var lowerMssqlConn = _connectionProvider.GetLowerMssqlConnection();
+            var sqlConn = (SqlConnection)lowerMssqlConn;
+            var createQuery = $"create database \"{dbName}\";";
+            lowerMssqlConn.Execute(createQuery);
+            var schemas = _dbInfoProvider.GetSchemas(dbName);
+            foreach (var s in schemas)
+            {
+                var query = $@"if not exists(select 1
+              from INFORMATION_SCHEMA.SCHEMATA
+              where SCHEMA_NAME ='{s.OldSchemaName}')
+                     begin
+                create schema {s.OldSchemaName};
+                end;";
+                lowerMssqlConn.Execute(query);
+            }
+
+            var tables = _dbInfoProvider.GetTables(dbName);
+            _createHelper.CreateTables(dbName, tables, false, true);
+
+            foreach (var t in tables)
+            {
+                var query = $"select * from  \"{t.OldSchemaName}\".\"{t.TableName}\";";
+                var reader = parentConnection.ExecuteReader(query);
+                var dataTable = new DataTable();
+                dataTable.Load(reader);
+                using (var bulkCopy = new SqlBulkCopy(sqlConn))
+                {
+                    bulkCopy.DestinationTableName = $"\"{t.OldSchemaName}\".\"{t.TableName}\"";
+                    bulkCopy.BulkCopyTimeout = 600;
+                    bulkCopy.WriteToServer(dataTable);
+                }
             }
         }
     }

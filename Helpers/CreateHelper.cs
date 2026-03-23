@@ -47,7 +47,7 @@ public class CreateHelper : ICreateHelper
         }
     }
 
-    public void CreateTables(string dbName, List<Table> tables, bool isPsqlToMssql = false)
+    public void CreateTables(string dbName, List<Table> tables, bool isPsqlToMssql = false, bool isDbVersioning = false)
     {
         var columns = _dbInfoProvider.GetColumns(dbName, isPsqlToMssql);
         if (isPsqlToMssql)
@@ -71,6 +71,21 @@ public class CreateHelper : ICreateHelper
             {
                 var finalColumns = GetTableColumns(t.TableName, t.OldSchemaName, columns);
                 var createTable = $"create table if not exists \"{t.NewSchemaName}\".\"{t.TableName}\"({finalColumns})";
+                conn.Execute(createTable);
+            }
+        }
+
+        if (isDbVersioning)
+        {
+            var conn = _connectionProvider.GetLowerMssqlConnection(dbName);
+            foreach (var t in tables.Distinct())
+            {
+                string columnsCreation = GetTableColumns(t.TableName, t.OldSchemaName, columns);
+                var createTable = @$"if not exists(
+                                        select 1 from INFORMATION_SCHEMA.TABLES where TABLE_NAME='{t.TableName}' and TABLE_SCHEMA='{t.NewSchemaName}')
+                                    begin
+                                    create table [{t.OldSchemaName}].[{t.TableName}] ({columnsCreation})
+                                    end;";
                 conn.Execute(createTable);
             }
         }

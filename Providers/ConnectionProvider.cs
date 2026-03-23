@@ -10,6 +10,7 @@ public class ConnectionProvider : IConnectionProvider
 {
     private readonly string _psqlSettings;
     private readonly string _msSqlSettings;
+    private readonly string _minMssqlConn;
 
 
     public ConnectionProvider(IConfiguration configuration)
@@ -20,6 +21,10 @@ public class ConnectionProvider : IConnectionProvider
 
         _psqlSettings = configuration.GetConnectionString("PostgresSQL") ??
                         throw new InvalidOperationException("Psql connection string is missing in configuration.");
+
+        _minMssqlConn = configuration.GetConnectionString("LowerMssql")
+                        ?? throw new InvalidOperationException(
+                            "SQL Server connection string is missing in configuration.");
     }
 
     public IDbConnection GetPsqlConnection(string? dbName)
@@ -38,6 +43,20 @@ public class ConnectionProvider : IConnectionProvider
     public IDbConnection GetMssqlConnection(string? dbname)
     {
         var finalMssqlConn = _msSqlSettings;
+
+        var builder = new SqlConnectionStringBuilder(finalMssqlConn)
+        {
+            InitialCatalog = dbname ?? "master"
+        };
+        finalMssqlConn = builder.ConnectionString;
+        var conn = new SqlConnection(finalMssqlConn);
+        conn.Open();
+        return conn;
+    }
+
+    public IDbConnection GetLowerMssqlConnection(string? dbname)
+    {
+        var finalMssqlConn = _minMssqlConn;
 
         var builder = new SqlConnectionStringBuilder(finalMssqlConn)
         {

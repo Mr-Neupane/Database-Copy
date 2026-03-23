@@ -6,4 +6,5 @@ public interface IConnectionProvider
 {
     IDbConnection GetPsqlConnection(string? dbname = null);
     IDbConnection GetMssqlConnection(string? dbname = null);
+    IDbConnection GetLowerMssqlConnection(string? dbname = null);
 }
