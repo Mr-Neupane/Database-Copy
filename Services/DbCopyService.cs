@@ -1,40 +1,38 @@
 ﻿using System.Data;
-using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Database_Copy.Providers.Interfaces;
 using Database_Copy.Services.Interfaces;
 using Dapper;
 using Database_Copy.Helpers.Interfaces;
-using Database_Copy.Models;
-using Database_Copy.Validator.Interfaces;
 using Microsoft.Data.SqlClient;
-using Npgsql;
-using NpgsqlTypes;
+using Microsoft.SqlServer.Management.Common;
+using Microsoft.SqlServer.Management.Sdk.Sfc;
+using Microsoft.SqlServer.Management.Smo;
 
 namespace Database_Copy.Services;
 
 public class DbCopyService : IDbCopyService
 {
     private readonly IConnectionProvider _connectionProvider;
-    private readonly IDataTypeProvider _dataTypeProvider;
-    private readonly IValidator _validator;
+    private readonly IMigrationService _migrationService;
     private readonly IDbInfoProvider _dbInfoProvider;
     private readonly ICreateHelper _createHelper;
 
-    public DbCopyService(IConnectionProvider connectionProvider, IDataTypeProvider dataTypeProvider,
-        IValidator validator, IDbInfoProvider dbInfoProvider, ICreateHelper createHelper)
+
+    public DbCopyService(IConnectionProvider connectionProvider, IMigrationService migrationService,
+        IDbInfoProvider dbInfoProvider, ICreateHelper createHelper)
     {
         _connectionProvider = connectionProvider;
-        _dataTypeProvider = dataTypeProvider;
-        _validator = validator;
+        _migrationService = migrationService;
         _dbInfoProvider = dbInfoProvider;
         _createHelper = createHelper;
     }
 
-    public void ValidateAndMigrate(string dbName, bool isToPostgres, bool isVersioning)
+    public void ValidateAndMigrate(string dbName, bool isToPostgres, bool isVersioning, string queryPath)
     {
         if (isVersioning)
         {
-            RevisionMssqlDb(dbName);
+            _migrationService.DowngradeMssqlDb(dbName, queryPath);
         }
         else
         {
@@ -67,7 +65,7 @@ public class DbCopyService : IDbCopyService
             _createHelper.CreateSchemas(dbName, schemas);
             var tables = _dbInfoProvider.GetTables(dbName, true);
             _createHelper.CreateTables(dbName, tables, true);
-            MigrateTableData(dbName, tables);
+            _migrationService.MigrateTableData(dbName, tables);
         }
         else
         {
@@ -94,189 +92,12 @@ public class DbCopyService : IDbCopyService
             _createHelper.CreateSchemas(dbName, schema, true);
             var tables = _dbInfoProvider.GetTables(dbName);
             _createHelper.CreateTables(dbName, tables);
-            MigrateTableData(dbName, tables, true);
+            _migrationService.MigrateTableData(dbName, tables, true);
         }
         else
         {
             Console.WriteLine($"Database with `{dbName}` does not exist");
             Environment.Exit(0);
-        }
-    }
-
-
-    void MigrateTableData(string dbName, List<Table> tables, bool isDesPsql = false)
-    {
-        var psqlConnection = _connectionProvider.GetPsqlConnection(dbName);
-        var msSqlConnection = _connectionProvider.GetMssqlConnection(dbName);
-        if (isDesPsql)
-        {
-            var stopwatch = Stopwatch.StartNew();
-            foreach (var t in tables.Distinct())
-            {
-                var npgsqlConn = (NpgsqlConnection)psqlConnection;
-                var query = $"select * from \"{t.OldSchemaName}\".\"{t.TableName}\";";
-                var data = msSqlConnection.ExecuteReader(query);
-
-                var dataTable = new DataTable();
-                dataTable.Load(data);
-                PsqlBulkInsert(npgsqlConn, dataTable, $"\"{t.NewSchemaName}\".\"{t.TableName}\"");
-                Console.WriteLine($"Migration from {t.OldSchemaName}.{t.TableName} completed.");
-            }
-
-            stopwatch.Stop();
-
-            var timeTaken = stopwatch.Elapsed;
-
-            Console.WriteLine();
-            if (timeTaken.TotalMinutes < 1)
-            {
-                Console.WriteLine(
-                    $"Migration completed in {Math.Round(timeTaken.TotalSeconds, 2)} second(s)");
-            }
-            else
-            {
-                Console.WriteLine($"Migration completed in {Math.Round(timeTaken.TotalMinutes, 2)} minute(s)");
-            }
-        }
-
-        else
-        {
-            var sqlConn = (SqlConnection)msSqlConnection;
-            var stopwatch = Stopwatch.StartNew();
-            foreach (var t in tables.Distinct())
-            {
-                var query = $"select * from \"{t.OldSchemaName}\".\"{t.TableName}\"";
-                var tableData = psqlConnection.ExecuteReader(query);
-                var dataTable = new DataTable();
-                dataTable.Load(tableData);
-                using (var txn = sqlConn.BeginTransaction())
-                {
-                    using (var bulkCopy = new SqlBulkCopy(sqlConn, SqlBulkCopyOptions.Default, txn))
-                    {
-                        bulkCopy.DestinationTableName = $"{t.NewSchemaName}.{t.TableName}";
-                        bulkCopy.BulkCopyTimeout = 30000;
-                        bulkCopy.WriteToServer(dataTable);
-                        Console.WriteLine($"Data migrated from {t.OldSchemaName}.{t.TableName}");
-                    }
-
-                    txn.Commit();
-                }
-
-
-                Console.WriteLine($"Data migrated from {t.OldSchemaName}.{t.TableName}");
-            }
-
-            stopwatch.Stop();
-
-            var timeTaken = stopwatch.Elapsed;
-
-            Console.WriteLine();
-            if (timeTaken.TotalMinutes < 1)
-            {
-                Console.WriteLine(
-                    $"Migration completed in {Math.Round(timeTaken.TotalSeconds, 2)} second(s)");
-            }
-            else
-            {
-                Console.WriteLine($"Migration completed in {Math.Round(timeTaken.TotalMinutes, 2)} minute(s)");
-            }
-        }
-    }
-
-
-    void PsqlBulkInsert(NpgsqlConnection connection, DataTable dataTable, string tableName)
-    {
-        var cmdTxt =
-            $"COPY {tableName} ({string.Join(",", dataTable.Columns.Cast<DataColumn>().Select(c => _validator.ValidateDoubleQuotesColumns(c.ColumnName) ? $"\"{c.ColumnName.Trim()}\"" : c.ColumnName.Trim()))}) FROM STDIN (FORMAT BINARY)";
-        var types = new List<string>();
-        var count = 0;
-        using (var importer = connection.BeginBinaryImport(cmdTxt))
-        {
-            // Add each row to the binary importer
-            foreach (DataRow row in dataTable.Rows)
-            {
-                importer.StartRow();
-                for (int i = 0; i < dataTable.Columns.Count; i++)
-                {
-                    var value = row[i];
-                    var type = dataTable.Columns[i].DataType;
-                    if (count == 0)
-                    {
-                        types.Add(type.FullName);
-                    }
-
-                    NpgsqlDbType dataType = _dataTypeProvider.GetTypeForPsql(type);
-                    if (value == null || value == DBNull.Value)
-                    {
-                        importer.WriteNull();
-                    }
-                    else
-                    {
-                        // var byteVal = ConvertToBytes(value, type);
-                        importer.Write(value, dataType);
-                    }
-                }
-
-                count++;
-            }
-
-
-            try
-            {
-                importer.Complete();
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-                Console.WriteLine($"{string.Join(",", types)}");
-                connection.Close();
-                connection.Open();
-            }
-        }
-    }
-
-    void RevisionMssqlDb(string dbName)
-    {
-        var parentConnection = _connectionProvider.GetMssqlConnection();
-        var validateDb = $"select 1 from sys.databases where name='{dbName.Trim()}'";
-        using var checkIfDbExists = parentConnection.CreateCommand();
-        checkIfDbExists.CommandText = validateDb;
-        var res = checkIfDbExists.ExecuteScalar();
-        var exists = res != null;
-        if (exists)
-        {
-            var lowerMssqlConn = _connectionProvider.GetLowerMssqlConnection();
-            var sqlConn = (SqlConnection)lowerMssqlConn;
-            var createQuery = $"create database \"{dbName}\";";
-            lowerMssqlConn.Execute(createQuery);
-            var schemas = _dbInfoProvider.GetSchemas(dbName);
-            foreach (var s in schemas)
-            {
-                var query = $@"if not exists(select 1
-              from INFORMATION_SCHEMA.SCHEMATA
-              where SCHEMA_NAME ='{s.OldSchemaName}')
-                     begin
-                create schema {s.OldSchemaName};
-                end;";
-                lowerMssqlConn.Execute(query);
-            }
-
-            var tables = _dbInfoProvider.GetTables(dbName);
-            _createHelper.CreateTables(dbName, tables, false, true);
-
-            foreach (var t in tables)
-            {
-                var query = $"select * from  \"{t.OldSchemaName}\".\"{t.TableName}\";";
-                var reader = parentConnection.ExecuteReader(query);
-                var dataTable = new DataTable();
-                dataTable.Load(reader);
-                using (var bulkCopy = new SqlBulkCopy(sqlConn))
-                {
-                    bulkCopy.DestinationTableName = $"\"{t.OldSchemaName}\".\"{t.TableName}\"";
-                    bulkCopy.BulkCopyTimeout = 600;
-                    bulkCopy.WriteToServer(dataTable);
-                }
-            }
         }
     }
 }

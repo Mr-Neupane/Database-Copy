@@ -1,6 +1,9 @@
-﻿using Dapper;
+﻿using System.Data;
+using Dapper;
 using Database_Copy.Models;
 using Database_Copy.Providers.Interfaces;
+using Microsoft.SqlServer.Management.Smo;
+using Schema = Database_Copy.Models.Schema;
 
 namespace Database_Copy.Providers;
 
@@ -35,17 +38,17 @@ public class DbInfoProvider : IDbInfoProvider
         }
     }
 
-    public List<Table> GetTables(string dbName, bool isPsqlToMssql = false)
+    public List<DbTable> GetTables(string dbName, bool isPsqlToMssql = false)
     {
         var schemas = GetSchemas(dbName, isPsqlToMssql);
         if (isPsqlToMssql)
         {
             var conn = _connectionProvider.GetPsqlConnection(dbName);
             var query = "SELECT schemaname as OldSchemaName, tablename FROM pg_tables;";
-            var tables = conn.Query<Table>(query).ToList();
+            var tables = conn.Query<DbTable>(query).ToList();
             var final = (from s in schemas
                 join t in tables on s.OldSchemaName equals t.OldSchemaName
-                select new Table()
+                select new DbTable()
                 {
                     OldSchemaName = s.OldSchemaName,
                     TableName = t.TableName
@@ -56,10 +59,10 @@ public class DbInfoProvider : IDbInfoProvider
         {
             var query = "select TABLE_SCHEMA OldSchemaName, TABLE_NAME TableName from INFORMATION_SCHEMA.TABLES;";
             var conn = _connectionProvider.GetMssqlConnection(dbName);
-            var unfilteredTables = conn.Query<Table>(query).ToList();
+            var unfilteredTables = conn.Query<DbTable>(query).ToList();
             var tables = (from t in unfilteredTables
                 join s in schemas on t.OldSchemaName equals s.OldSchemaName
-                select new Table
+                select new DbTable
                 {
                     OldSchemaName = t.OldSchemaName,
                     TableName = t.TableName
@@ -135,5 +138,32 @@ public class DbInfoProvider : IDbInfoProvider
                 }).ToList();
             return finalColumns;
         }
+    }
+
+    public SqlServerVersion GetTargetVersion(IDbConnection connection)
+    {
+        string versionString;
+
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT SERVERPROPERTY('ProductVersion')";
+            versionString = cmd.ExecuteScalar()?.ToString();
+        }
+
+        int majorVersion = int.Parse(versionString?.Split('.')[0]);
+
+        return majorVersion switch
+        {
+            8 => SqlServerVersion.Version80, // SQL 2000
+            9 => SqlServerVersion.Version90, // SQL 2005
+            10 => SqlServerVersion.Version100, // SQL 2008
+            11 => SqlServerVersion.Version110, // SQL 2012
+            12 => SqlServerVersion.Version120, // SQL 2014
+            13 => SqlServerVersion.Version130, // SQL 2016
+            14 => SqlServerVersion.Version140, // SQL 2017
+            15 => SqlServerVersion.Version150, // SQL 2019
+            16 => SqlServerVersion.Version160, // SQL 2022
+            _ => throw new NotSupportedException($"Unsupported SQL Server version: {majorVersion}")
+        };
     }
 }

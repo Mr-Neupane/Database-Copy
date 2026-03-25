@@ -13,6 +13,8 @@ var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     .Build();
+var isVersioningDefault = configuration.GetValue<bool>("Default:IsVersioningDefault");
+var queryPath = configuration.GetValue<string>("Default:RawQueryPath")?.Trim();
 
 var services = new ServiceCollection();
 
@@ -23,7 +25,9 @@ services.AddScoped<IConnectionProvider, ConnectionProvider>()
     .AddTransient<IDataTypeProvider, DataTypeProvider>()
     .AddTransient<IDbInfoProvider, DbInfoProvider>()
     .AddTransient<IValidator, Validator>()
-    .AddTransient<ICreateHelper, CreateHelper>();
+    .AddTransient<ICreateHelper, CreateHelper>()
+    .AddTransient<IMigrationService, MigrationService>()
+    .AddTransient<IRawQueryService, RawQueryService>();
 
 var serviceProvider = services.BuildServiceProvider();
 
@@ -39,19 +43,25 @@ if (string.IsNullOrWhiteSpace(dbName))
     return;
 }
 
-Console.WriteLine("Select server type to be moved:");
-Console.WriteLine("1. Psql to Mssql");
-Console.WriteLine("2. Mssql to Psql");
-Console.WriteLine("3. Mssql Db versioning");
-var type = Convert.ToInt32(Console.ReadLine()?.Trim());
-if (type > 3 || type == 0)
+bool toPostgres = false;
+
+if (!isVersioningDefault)
 {
-    Console.WriteLine("Invalid copy selection.");
-    return;
+    Console.WriteLine("Select server type to be moved:");
+    Console.WriteLine("1. Psql to Mssql");
+    Console.WriteLine("2. Mssql to Psql");
+    Console.WriteLine("3. Mssql Db versioning");
+    var type = Convert.ToInt32(Console.ReadLine()?.Trim());
+    if (type > 3 || type == 0)
+    {
+        Console.WriteLine("Invalid copy selection.");
+        return;
+    }
+
+    toPostgres = type == 2;
+    isVersioningDefault = type == 3;
 }
 
-var toPostgres = type == 2;
-var isVersioning = type == 3;
 
 var service = serviceProvider.GetRequiredService<IDbCopyService>();
-service.ValidateAndMigrate(dbName, toPostgres,isVersioning);
+service.ValidateAndMigrate(dbName, toPostgres, isVersioningDefault, queryPath);

@@ -6,12 +6,12 @@ public class Schema
     public string NewSchemaName => string.Concat(OldSchemaName, "_mig");
 }
 
-public class Table : Schema
+public class DbTable : Schema
 {
     public string TableName { get; set; }
 }
 
-public class Columns : Table
+public class Columns : DbTable
 {
     public string ColumnName { get; set; }
     public string DataType { get; set; }

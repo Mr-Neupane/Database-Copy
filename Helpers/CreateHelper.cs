@@ -47,7 +47,7 @@ public class CreateHelper : ICreateHelper
         }
     }
 
-    public void CreateTables(string dbName, List<Table> tables, bool isPsqlToMssql = false, bool isDbVersioning = false)
+    public void CreateTables(string dbName, List<DbTable> tables, bool isPsqlToMssql = false, bool isDbVersioning = false)
     {
         var columns = _dbInfoProvider.GetColumns(dbName, isPsqlToMssql);
         if (isPsqlToMssql)
