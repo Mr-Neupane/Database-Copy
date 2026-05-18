@@ -23,7 +23,7 @@ public class CreateHelper : ICreateHelper
     {
         if (isMssqlToPsql)
         {
-            var conn = _connectionProvider.GetPsqlConnection(dbName);
+            using var conn = _connectionProvider.GetPsqlConnection(dbName);
             foreach (var schema in schemas)
             {
                 var query = $"create schema if not exists \"{schema.NewSchemaName}\"";
@@ -32,7 +32,7 @@ public class CreateHelper : ICreateHelper
         }
         else
         {
-            var conn = _connectionProvider.GetMssqlConnection(dbName);
+            using var conn = _connectionProvider.GetMssqlConnection(dbName);
             foreach (var schema in schemas.Distinct())
             {
                 var createSchema = @$"
@@ -49,10 +49,10 @@ public class CreateHelper : ICreateHelper
 
     public void CreateTables(string dbName, List<DbTable> tables, bool isPsqlToMssql = false, bool isDbVersioning = false)
     {
-        var columns = _dbInfoProvider.GetColumns(dbName, isPsqlToMssql);
+        var columns = _dbInfoProvider.GetColumns(dbName, isPsqlToMssql, isDbVersioning);
         if (isPsqlToMssql)
         {
-            var conn = _connectionProvider.GetMssqlConnection(dbName);
+            using var conn = _connectionProvider.GetMssqlConnection(dbName);
             foreach (var t in tables.Distinct())
             {
                 string columnsCreation = GetTableColumns(t.TableName, t.OldSchemaName, columns);
@@ -66,7 +66,7 @@ public class CreateHelper : ICreateHelper
         }
         else
         {
-            var conn = _connectionProvider.GetPsqlConnection(dbName);
+            using var conn = _connectionProvider.GetPsqlConnection(dbName);
             foreach (var t in tables.Distinct())
             {
                 var finalColumns = GetTableColumns(t.TableName, t.OldSchemaName, columns);
@@ -77,12 +77,12 @@ public class CreateHelper : ICreateHelper
 
         if (isDbVersioning)
         {
-            var conn = _connectionProvider.GetLowerMssqlConnection(dbName);
+            using var conn = _connectionProvider.GetLowerMssqlConnection(dbName);
             foreach (var t in tables.Distinct())
             {
                 string columnsCreation = GetTableColumns(t.TableName, t.OldSchemaName, columns);
                 var createTable = @$"if not exists(
-                                        select 1 from INFORMATION_SCHEMA.TABLES where TABLE_NAME='{t.TableName}' and TABLE_SCHEMA='{t.NewSchemaName}')
+                                        select 1 from INFORMATION_SCHEMA.TABLES where TABLE_NAME='{t.TableName}' and TABLE_SCHEMA='{t.OldSchemaName}')
                                     begin
                                     create table [{t.OldSchemaName}].[{t.TableName}] ({columnsCreation})
                                     end;";
@@ -100,11 +100,10 @@ public class CreateHelper : ICreateHelper
         {
             var comma = i == tc.Count - 1 ? "" : ",";
             var nullable = tc[i].IsNullable == "YES" ? "" : "Not Null";
-            var pk = tc[i].IsIdentity == "YES" ? "primary key" : "";
             var column = _validator.ValidateDoubleQuotesColumns(tc[i].ColumnName)
                 ? $"\"{tc[i].ColumnName}\""
                 : tc[i].ColumnName;
-            columnsCreation += $" {column}  {tc[i].DataType} {pk} {nullable} {comma} ";
+            columnsCreation += $" {column}  {tc[i].DataType} {nullable} {comma} ";
         }
 
         return columnsCreation;

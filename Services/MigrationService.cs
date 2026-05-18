@@ -1,5 +1,5 @@
 ﻿using System.Data;
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using System.Diagnostics;
 using Dapper;
 using Database_Copy.Models;
@@ -34,8 +34,8 @@ public class MigrationService : IMigrationService
 
     public void MigrateTableData(string dbName, List<DbTable> tables, bool isDesPsql = false)
     {
-        var psqlConnection = _connectionProvider.GetPsqlConnection(dbName);
-        var msSqlConnection = _connectionProvider.GetMssqlConnection(dbName);
+        using var psqlConnection = _connectionProvider.GetPsqlConnection(dbName);
+        using var msSqlConnection = _connectionProvider.GetMssqlConnection(dbName);
         if (isDesPsql)
         {
             var stopwatch = Stopwatch.StartNew();
@@ -162,12 +162,7 @@ public class MigrationService : IMigrationService
         }
     }
 
-//     public void DowngradeMssqlDb(string dbName, string queryPath)
-//     {
-//         var instance = _connectionProvider.GetMssqlConnection();
-//         var sqlConn = instance as Microsoft.Data.SqlClient.SqlConnection;
-//         _rawQueryService.ExecuteQuery(instance, queryPath);
-//
+    
 //         if (sqlConn == null)
 //             throw new Exception("Connection is not a SqlConnection");
 //
@@ -276,7 +271,7 @@ public class MigrationService : IMigrationService
 
     public void DowngradeMssqlDb(string dbName, string queryPath)
     {
-        var sourceConn = _connectionProvider.GetMssqlConnection();
+        using var sourceConn = _connectionProvider.GetMssqlConnection();
         var sourceSqlConn = sourceConn as Microsoft.Data.SqlClient.SqlConnection
                             ?? throw new InvalidOperationException("Source connection is not a SqlConnection.");
 
@@ -290,7 +285,7 @@ public class MigrationService : IMigrationService
         var sourceDb = server.Databases[dbName]
                        ?? throw new InvalidOperationException($"Database '{dbName}' not found.");
 
-        var targetConn = _connectionProvider.GetLowerMssqlConnection(dbName);
+        using var targetConn = _connectionProvider.GetLowerMssqlConnection(dbName);
         var targetSqlConn = targetConn as Microsoft.Data.SqlClient.SqlConnection
                             ?? throw new InvalidOperationException("Target connection is not a SqlConnection.");
 
@@ -367,11 +362,11 @@ public class MigrationService : IMigrationService
         ScriptAndApply(sourceDb.UserDefinedDataTypes.Cast<UserDefinedDataType>().Select(t => t.Urn));
         ScriptAndApply(sourceDb.UserDefinedTableTypes.Cast<UserDefinedTableType>().Select(t => t.Urn));
         ScriptAndApply(sorted.Select(t => t.Urn));
+        ScriptAndApply(sourceDb.UserDefinedFunctions.Cast<UserDefinedFunction>().Where(fn => !fn.IsSystemObject)
+            .Select(fn => fn.Urn));
         ScriptAndApply(sourceDb.Views.Cast<View>().Where(v => !v.IsSystemObject).Select(v => v.Urn));
         ScriptAndApply(sourceDb.StoredProcedures.Cast<StoredProcedure>().Where(sp => !sp.IsSystemObject)
             .Select(sp => sp.Urn));
-        ScriptAndApply(sourceDb.UserDefinedFunctions.Cast<UserDefinedFunction>().Where(fn => !fn.IsSystemObject)
-            .Select(fn => fn.Urn));
         ScriptAndApply(allTables.SelectMany(t => t.Triggers.Cast<Trigger>().Select(tr => tr.Urn)));
 
 
@@ -408,7 +403,6 @@ public class MigrationService : IMigrationService
                 }
 
             bulk.WriteToServer(reader);
-            Console.WriteLine(reader);
         }
 
         targetConn.Execute("EXEC sp_MSforeachtable 'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL'");

@@ -51,8 +51,7 @@ if (!isVersioningDefault)
     Console.WriteLine("1. Psql to Mssql");
     Console.WriteLine("2. Mssql to Psql");
     Console.WriteLine("3. Mssql Db versioning");
-    var type = Convert.ToInt32(Console.ReadLine()?.Trim());
-    if (type > 3 || type == 0)
+    if (!int.TryParse(Console.ReadLine()?.Trim(), out var type) || type < 1 || type > 3)
     {
         Console.WriteLine("Invalid copy selection.");
         return;

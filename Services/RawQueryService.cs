@@ -8,6 +8,9 @@ public class RawQueryService : IRawQueryService
 {
     public void ExecuteQuery(IDbConnection dbConnection, string queryPath)
     {
+        if (string.IsNullOrWhiteSpace(queryPath))
+            return;
+
         if (File.Exists(queryPath))
         {
             var queryFile = File.ReadAllText(queryPath);

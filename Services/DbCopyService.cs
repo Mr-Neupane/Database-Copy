@@ -1,13 +1,8 @@
 ﻿using System.Data;
-using System.Text.RegularExpressions;
 using Database_Copy.Providers.Interfaces;
 using Database_Copy.Services.Interfaces;
 using Dapper;
 using Database_Copy.Helpers.Interfaces;
-using Microsoft.Data.SqlClient;
-using Microsoft.SqlServer.Management.Common;
-using Microsoft.SqlServer.Management.Sdk.Sfc;
-using Microsoft.SqlServer.Management.Smo;
 
 namespace Database_Copy.Services;
 
@@ -49,7 +44,7 @@ public class DbCopyService : IDbCopyService
 
     void ConvertPsqlToMssql(string dbName)
     {
-        var psqlParent = _connectionProvider.GetPsqlConnection();
+        using var psqlParent = _connectionProvider.GetPsqlConnection();
         var query = $"select exists(select 1 from pg_database where datname = \'{dbName}\');";
 
         using var checkIfDbExists = psqlParent.CreateCommand();
@@ -58,7 +53,7 @@ public class DbCopyService : IDbCopyService
         var exists = (bool)checkIfDbExists.ExecuteScalar();
         if (exists)
         {
-            var mssqlConn = _connectionProvider.GetMssqlConnection();
+            using var mssqlConn = _connectionProvider.GetMssqlConnection();
             var createQuery = $"create database [{dbName}]";
             mssqlConn.Execute(createQuery);
             var schemas = _dbInfoProvider.GetSchemas(dbName, true);
@@ -77,7 +72,7 @@ public class DbCopyService : IDbCopyService
 
     private void ConvertMssqlToPsql(string dbName)
     {
-        var msSqlConn = _connectionProvider.GetMssqlConnection();
+        using var msSqlConn = _connectionProvider.GetMssqlConnection();
         var validateDb = $"select 1 from sys.databases where name='{dbName.Trim()}'";
         using var checkIfDbExists = msSqlConn.CreateCommand();
         checkIfDbExists.CommandText = validateDb;
@@ -85,7 +80,7 @@ public class DbCopyService : IDbCopyService
         var exists = res != null;
         if (exists)
         {
-            var psqlConn = _connectionProvider.GetPsqlConnection();
+            using var psqlConn = _connectionProvider.GetPsqlConnection();
             var createQuery = $"create database \"{dbName}\";";
             psqlConn.Execute(createQuery);
             var schema = _dbInfoProvider.GetSchemas(dbName);
